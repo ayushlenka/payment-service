@@ -82,5 +82,57 @@ services:
       timeout: 5s
       retries: 10
 
+  # --------------------------------------------------------------------------
+  # payment-service — orchestrator / REST entry point.
+  # --------------------------------------------------------------------------
+  payment-service:
+    build:
+      # Context is the repo root so the build can see the parent POM + both modules.
+      context: .
+      dockerfile: payment-service/Dockerfile
+    container_name: pp-payment-service
+    depends_on:
+      postgres:
+        # Don't start until Postgres passes its healthcheck (Flyway needs it up).
+        condition: service_healthy
+    environment:
+      # Inside the compose network the DB host is "postgres", not "localhost".
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/payments
+      SPRING_DATASOURCE_USERNAME: payments
+      SPRING_DATASOURCE_PASSWORD: payments
+      # (Kafka bootstrap servers get added here in Milestone 2.)
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s   # grace period while the JVM/Spring boots
+
+  # --------------------------------------------------------------------------
+  # ledger-service — source of truth for balances.
+  # --------------------------------------------------------------------------
+  ledger-service:
+    build:
+      context: .
+      dockerfile: ledger-service/Dockerfile
+    container_name: pp-ledger-service
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/ledger
+      SPRING_DATASOURCE_USERNAME: payments
+      SPRING_DATASOURCE_PASSWORD: payments
+    ports:
+      - "8081:8081"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+
 volumes:
   pp-postgres-data:

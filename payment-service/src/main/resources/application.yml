@@ -1,0 +1,40 @@
+spring:
+  application:
+    name: payment-service
+
+  # Defaults target the Dockerized Postgres as seen from the HOST (localhost:5432).
+  # Inside docker-compose we override SPRING_DATASOURCE_URL to point at host "postgres".
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/payments}
+    username: ${SPRING_DATASOURCE_USERNAME:payments}
+    password: ${SPRING_DATASOURCE_PASSWORD:payments}
+
+  jpa:
+    hibernate:
+      # Flyway owns the schema. Hibernate must NEVER modify it — only validate
+      # that our @Entity classes match the migrated tables (no-op until we add entities).
+      ddl-auto: validate
+    # Avoid holding a DB connection/session open for the whole HTTP request.
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          # Postgres stores timestamps in UTC; keep the app consistent.
+          time_zone: UTC
+
+  flyway:
+    enabled: true
+    # Migrations live in classpath:db/migration (V1__..., V2__..., run in order).
+
+server:
+  port: ${SERVER_PORT:8080}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        # Only expose what we need. /health includes a "db" component that pings Postgres.
+        include: health,info
+  endpoint:
+    health:
+      show-details: always

@@ -47,7 +47,8 @@
     </dependencyManagement>
 
     <modules>
-        <!-- Services are added here as we build each one (Milestone 1c onward). -->
+        <module>payment-service</module>
+        <module>ledger-service</module>
     </modules>
 
 </project>
