@@ -1,0 +1,86 @@
+# Local orchestration for the payment platform.
+#
+# Milestone 1b: just the infrastructure (Postgres + Kafka). The application
+# services (payment-service, ledger-service) get added to this file in Milestone 1e.
+#
+# Bring the infra up on its own with:
+#   docker compose up -d postgres kafka
+#
+# The 'name' pins a stable project name so container/network names are predictable.
+name: payment-platform
+
+services:
+  # --------------------------------------------------------------------------
+  # PostgreSQL — one instance hosting TWO databases (payments, ledger).
+  # Each service owns its database; no service reads another's tables.
+  # --------------------------------------------------------------------------
+  postgres:
+    image: postgres:16
+    container_name: pp-postgres
+    environment:
+      POSTGRES_USER: payments
+      POSTGRES_PASSWORD: payments
+      # Creates the first database ("payments"). The second database ("ledger")
+      # is created by the init script mounted below.
+      POSTGRES_DB: payments
+    ports:
+      - "5432:5432"
+    volumes:
+      # Files in /docker-entrypoint-initdb.d run once, only on first init of an
+      # empty data directory. This creates the ledger database.
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+      - pp-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      # Services and `docker compose up --wait` block until this passes.
+      test: ["CMD-SHELL", "pg_isready -U payments -d payments"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # --------------------------------------------------------------------------
+  # Kafka — single-broker KRaft mode (no ZooKeeper). This node is both the
+  # controller (cluster metadata) and the broker (data).
+  # --------------------------------------------------------------------------
+  kafka:
+    image: apache/kafka:3.8.0
+    container_name: pp-kafka
+    ports:
+      # Host-facing listener (see PLAINTEXT_HOST below). Local dev + Testcontainers
+      # on the host connect via localhost:29092.
+      - "29092:29092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+
+      # THREE listeners, and why:
+      #   PLAINTEXT      (kafka:9092)      -> for clients running INSIDE the compose
+      #                                       network (the app containers). They resolve
+      #                                       the hostname "kafka".
+      #   CONTROLLER     (kafka:9093)      -> internal KRaft controller traffic only.
+      #   PLAINTEXT_HOST (localhost:29092) -> for clients on your HOST machine, which
+      #                                       cannot resolve "kafka" and must use localhost.
+      # A client is handed the ADVERTISED address for whichever listener it connected on,
+      # so each audience gets an address it can actually reach.
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093,PLAINTEXT_HOST://0.0.0.0:29092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+
+      # Single broker => everything replicated once. Fine for local, never for prod.
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      # Don't wait to batch up a consumer group before the first rebalance (faster local startup).
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      # We create topics explicitly (with real partition counts) rather than auto-creating them.
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pp-postgres-data:
