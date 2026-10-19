@@ -31,7 +31,8 @@ public class OutboxRelay {
         this.kafkaTemplate = kafkaTemplate;
     }
 
-    @Scheduled(fixedDelayString = "${outbox.relay.poll-interval-ms:1000}")
+    @Scheduled(fixedDelayString = "${outbox.relay.poll-interval-ms:1000}",
+            initialDelayString = "${outbox.relay.initial-delay-ms:0}")
     @Transactional
     public void publishPending() {
         List<OutboxMessage> batch = outboxRepository.findByPublishedAtIsNullOrderByIdAsc(Limit.of(BATCH_SIZE));
