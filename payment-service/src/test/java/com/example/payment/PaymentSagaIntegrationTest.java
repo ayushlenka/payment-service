@@ -107,12 +107,38 @@ class PaymentSagaIntegrationTest {
         assertThat(recordsFrom("ledger.events.DLT", "not-a-valid-json-payload")).isNotEmpty();
     }
 
+    @Test
+    void fraudApproved_movesToPosting_andRequestsTheTransfer() throws Exception {
+        UUID paymentId = seedPayment("FRAUD_CHECK");
+
+        publish("fraud.results", paymentId.toString(), fraudApproved(paymentId));
+
+        awaitStatus(paymentId, "POSTING");
+        assertThat(recordsFrom("payment.commands", paymentId.toString()))
+                .anyMatch(value -> value.contains("TransferRequested"));
+    }
+
+    @Test
+    void fraudRejected_failsPayment_andEmitsPaymentFailed() throws Exception {
+        UUID paymentId = seedPayment("FRAUD_CHECK");
+
+        publish("fraud.results", paymentId.toString(), fraudRejected(paymentId, "AMOUNT_LIMIT"));
+
+        awaitStatus(paymentId, "FAILED");
+        assertThat(recordsFrom("payment.events", paymentId.toString()))
+                .anyMatch(value -> value.contains("PaymentFailed") && value.contains("AMOUNT_LIMIT"));
+    }
+
     private UUID seedPostingPayment() {
+        return seedPayment("POSTING");
+    }
+
+    private UUID seedPayment(String status) {
         UUID paymentId = UUID.randomUUID();
         jdbc.update("INSERT INTO payments "
                         + "(id, idempotency_key, from_account_id, to_account_id, amount_minor, currency, status) "
-                        + "VALUES (?, ?, ?, ?, ?, ?, 'POSTING')",
-                paymentId, "key-" + paymentId, UUID.randomUUID(), UUID.randomUUID(), 2500L, "USD");
+                        + "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                paymentId, "key-" + paymentId, UUID.randomUUID(), UUID.randomUUID(), 2500L, "USD", status);
         return paymentId;
     }
 
@@ -136,8 +162,31 @@ class PaymentSagaIntegrationTest {
         return objectMapper.writeValueAsString(event);
     }
 
+    private String fraudApproved(UUID paymentId) throws Exception {
+        Map<String, Object> event = new LinkedHashMap<>();
+        event.put("type", "FraudApproved");
+        event.put("version", 1);
+        event.put("paymentId", paymentId);
+        event.put("occurredAt", Instant.now().toString());
+        return objectMapper.writeValueAsString(event);
+    }
+
+    private String fraudRejected(UUID paymentId, String reason) throws Exception {
+        Map<String, Object> event = new LinkedHashMap<>();
+        event.put("type", "FraudRejected");
+        event.put("version", 1);
+        event.put("paymentId", paymentId);
+        event.put("reason", reason);
+        event.put("occurredAt", Instant.now().toString());
+        return objectMapper.writeValueAsString(event);
+    }
+
     private void publishLedgerEvent(UUID paymentId, String json) {
-        kafkaTemplate.send("ledger.events", paymentId.toString(), json);
+        publish("ledger.events", paymentId.toString(), json);
+    }
+
+    private void publish(String topic, String key, String json) {
+        kafkaTemplate.send(topic, key, json);
         kafkaTemplate.flush();
     }
 

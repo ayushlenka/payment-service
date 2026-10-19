@@ -8,6 +8,7 @@ WORKDIR /workspace
 COPY pom.xml ./
 COPY payment-service/pom.xml payment-service/
 COPY ledger-service/pom.xml ledger-service/
+COPY fraud-service/pom.xml fraud-service/
 RUN mvn -q -pl payment-service -am dependency:go-offline
 
 COPY payment-service/src payment-service/src

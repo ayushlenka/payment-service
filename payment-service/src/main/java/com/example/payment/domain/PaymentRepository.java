@@ -27,18 +27,26 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
                    @Param("to") PaymentStatus to,
                    @Param("now") Instant now);
 
-    default int markPosting(UUID id) {
-        return transition(id, List.of(PaymentStatus.PENDING), PaymentStatus.POSTING, Instant.now());
+    default int markFraudCheck(UUID id) {
+        return transition(id, List.of(PaymentStatus.PENDING), PaymentStatus.FRAUD_CHECK, Instant.now());
+    }
+
+    default int approveToPosting(UUID id) {
+        return transition(id, List.of(PaymentStatus.PENDING, PaymentStatus.FRAUD_CHECK),
+                PaymentStatus.POSTING, Instant.now());
+    }
+
+    default int rejectFromFraud(UUID id) {
+        return transition(id, List.of(PaymentStatus.PENDING, PaymentStatus.FRAUD_CHECK),
+                PaymentStatus.FAILED, Instant.now());
     }
 
     default int complete(UUID id) {
-        return transition(id, List.of(PaymentStatus.PENDING, PaymentStatus.POSTING),
-                PaymentStatus.COMPLETED, Instant.now());
+        return transition(id, List.of(PaymentStatus.POSTING), PaymentStatus.COMPLETED, Instant.now());
     }
 
     default int startCompensation(UUID id) {
-        return transition(id, List.of(PaymentStatus.PENDING, PaymentStatus.POSTING),
-                PaymentStatus.COMPENSATING, Instant.now());
+        return transition(id, List.of(PaymentStatus.POSTING), PaymentStatus.COMPENSATING, Instant.now());
     }
 
     default int fail(UUID id) {

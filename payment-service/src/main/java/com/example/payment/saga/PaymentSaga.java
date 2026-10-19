@@ -1,8 +1,10 @@
 package com.example.payment.saga;
 
+import com.example.payment.domain.Payment;
 import com.example.payment.domain.PaymentRepository;
 import com.example.payment.messaging.PaymentCompleted;
 import com.example.payment.messaging.PaymentFailed;
+import com.example.payment.messaging.TransferRequested;
 import com.example.payment.outbox.OutboxMessage;
 import com.example.payment.outbox.OutboxRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -26,6 +28,22 @@ public class PaymentSaga {
         this.payments = payments;
         this.outbox = outbox;
         this.objectMapper = objectMapper;
+    }
+
+    @Transactional
+    public void onFraudApproved(UUID paymentId) {
+        if (payments.approveToPosting(paymentId) == 1) {
+            // Now cleared, ask the ledger to post the transfer this payment represents.
+            Payment payment = payments.findById(paymentId).orElseThrow();
+            emit(paymentId, TransferRequested.TYPE, TransferRequested.from(payment));
+        }
+    }
+
+    @Transactional
+    public void onFraudRejected(UUID paymentId, String reason) {
+        if (payments.rejectFromFraud(paymentId) == 1) {
+            emit(paymentId, PaymentFailed.TYPE, PaymentFailed.of(paymentId, reason));
+        }
     }
 
     @Transactional

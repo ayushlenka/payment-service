@@ -9,10 +9,25 @@ import org.springframework.kafka.config.TopicBuilder;
 @Configuration
 public class KafkaTopicsConfig {
 
+    public static final String FRAUD_REQUESTS = "fraud.requests";
+    public static final String FRAUD_RESULTS = "fraud.results";
+    public static final String FRAUD_RESULTS_DLT = FRAUD_RESULTS + ".DLT";
     public static final String PAYMENT_COMMANDS = "payment.commands";
     public static final String PAYMENT_EVENTS = "payment.events";
     public static final String LEDGER_EVENTS = "ledger.events";
     public static final String LEDGER_EVENTS_DLT = LEDGER_EVENTS + ".DLT";
+
+    // We produce payment initiations here for the fraud service to screen.
+    @Bean
+    NewTopic fraudRequests() {
+        return TopicBuilder.name(FRAUD_REQUESTS).partitions(3).replicas(1).build();
+    }
+
+    // Dead-letter topic for poison fraud verdicts we consume.
+    @Bean
+    NewTopic fraudResultsDlt() {
+        return TopicBuilder.name(FRAUD_RESULTS_DLT).partitions(3).replicas(1).build();
+    }
 
     // Multiple partitions so per-account ordering (key = fromAccountId) is real, not theoretical.
     @Bean

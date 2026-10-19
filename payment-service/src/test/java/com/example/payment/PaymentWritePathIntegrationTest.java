@@ -133,7 +133,7 @@ class PaymentWritePathIntegrationTest {
         assertThat(recordsFor(paymentId)).hasSize(1);
     }
 
-    // Reads payment.commands from the start and keeps records mentioning this paymentId.
+    // Reads fraud.requests from the start and keeps records mentioning this paymentId.
     private List<ConsumerRecord<String, String>> recordsFor(UUID paymentId) {
         Properties props = new Properties();
         props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers());
@@ -144,7 +144,7 @@ class PaymentWritePathIntegrationTest {
 
         List<ConsumerRecord<String, String>> matched = new ArrayList<>();
         try (KafkaConsumer<String, String> consumer = new KafkaConsumer<>(props)) {
-            consumer.subscribe(List.of("payment.commands"));
+            consumer.subscribe(List.of("fraud.requests"));
             long deadline = System.currentTimeMillis() + 5000;
             while (System.currentTimeMillis() < deadline) {
                 for (ConsumerRecord<String, String> record : consumer.poll(Duration.ofMillis(300))) {

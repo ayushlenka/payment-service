@@ -5,6 +5,7 @@ import com.example.payment.domain.PaymentRepository;
 import com.example.payment.messaging.PaymentCompleted;
 import com.example.payment.messaging.PaymentFailed;
 import com.example.payment.messaging.PaymentInitiated;
+import com.example.payment.messaging.TransferRequested;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.time.Instant;
 import java.util.List;
@@ -62,10 +63,10 @@ public class OutboxRelay {
         }
     }
 
-    // Once the initiating command is on the wire, the payment is awaiting the ledger (POSTING).
+    // Once the initiation is on the wire for fraud screening, the payment is in FRAUD_CHECK.
     private void advanceSaga(OutboxMessage message) {
         if (PaymentInitiated.TYPE.equals(message.getEventType())) {
-            paymentRepository.markPosting(message.getAggregateId());
+            paymentRepository.markFraudCheck(message.getAggregateId());
         }
     }
 
@@ -74,6 +75,8 @@ public class OutboxRelay {
         return switch (message.getEventType()) {
             // Keyed by fromAccountId for per-account ordering (spec §6).
             case PaymentInitiated.TYPE ->
+                    new Route(KafkaTopicsConfig.FRAUD_REQUESTS, payload.get("fromAccountId").asText());
+            case TransferRequested.TYPE ->
                     new Route(KafkaTopicsConfig.PAYMENT_COMMANDS, payload.get("fromAccountId").asText());
             case PaymentCompleted.TYPE, PaymentFailed.TYPE ->
                     new Route(KafkaTopicsConfig.PAYMENT_EVENTS, payload.get("paymentId").asText());
