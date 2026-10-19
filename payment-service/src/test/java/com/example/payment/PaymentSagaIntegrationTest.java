@@ -95,6 +95,18 @@ class PaymentSagaIntegrationTest {
         assertThat(completedRows).isEqualTo(1);
     }
 
+    @Test
+    void poisonLedgerEvent_routesToDlt_withoutBlockingSaga() throws Exception {
+        UUID paymentId = seedPostingPayment();
+        String key = paymentId.toString(); // same key => poison and valid share a partition
+
+        kafkaTemplate.send("ledger.events", key, "not-a-valid-json-payload").get();
+        publishLedgerEvent(paymentId, ledgerPosted(paymentId));
+
+        awaitStatus(paymentId, "COMPLETED");
+        assertThat(recordsFrom("ledger.events.DLT", "not-a-valid-json-payload")).isNotEmpty();
+    }
+
     private UUID seedPostingPayment() {
         UUID paymentId = UUID.randomUUID();
         jdbc.update("INSERT INTO payments "
@@ -157,6 +169,30 @@ class PaymentSagaIntegrationTest {
             while (System.currentTimeMillis() < deadline && matched.isEmpty()) {
                 for (ConsumerRecord<String, String> record : consumer.poll(Duration.ofMillis(300))) {
                     if (record.value().contains(paymentId.toString())) {
+                        matched.add(record.value());
+                    }
+                }
+            }
+        }
+        return matched;
+    }
+
+    // Reads any topic until a record contains the given substring (or times out).
+    private List<String> recordsFrom(String topic, String substring) {
+        Properties props = new Properties();
+        props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers());
+        props.put(ConsumerConfig.GROUP_ID_CONFIG, "test-" + UUID.randomUUID());
+        props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+        props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
+        props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
+
+        List<String> matched = new ArrayList<>();
+        try (KafkaConsumer<String, String> consumer = new KafkaConsumer<>(props)) {
+            consumer.subscribe(List.of(topic));
+            long deadline = System.currentTimeMillis() + 20_000;
+            while (System.currentTimeMillis() < deadline && matched.isEmpty()) {
+                for (ConsumerRecord<String, String> record : consumer.poll(Duration.ofMillis(300))) {
+                    if (record.value().contains(substring)) {
                         matched.add(record.value());
                     }
                 }
