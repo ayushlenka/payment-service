@@ -6,9 +6,9 @@ import com.example.ledger.domain.Account;
 import com.example.ledger.domain.AccountBalance;
 import com.example.ledger.domain.AccountBalanceRepository;
 import com.example.ledger.domain.AccountRepository;
+import com.example.ledger.domain.Direction;
 import com.example.ledger.domain.LedgerEntry;
 import com.example.ledger.domain.LedgerEntryRepository;
-import com.example.ledger.domain.Direction;
 import com.example.ledger.posting.LedgerPostingService;
 import java.util.ArrayList;
 import java.util.List;
@@ -21,32 +21,10 @@ import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.test.context.DynamicPropertyRegistry;
-import org.springframework.test.context.DynamicPropertySource;
-import org.testcontainers.containers.PostgreSQLContainer;
 
 /** Property tests: no sequence of transfers may create or destroy money. */
-@SpringBootTest
-class LedgerInvariantTest {
-
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16")
-            .withDatabaseName("ledger")
-            .withUsername("payments")
-            .withPassword("payments");
-
-    static {
-        POSTGRES.start();
-    }
-
-    @DynamicPropertySource
-    static void properties(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
-        registry.add("spring.datasource.username", POSTGRES::getUsername);
-        registry.add("spring.datasource.password", POSTGRES::getPassword);
-        registry.add("spring.datasource.hikari.maximum-pool-size", () -> "20");
-    }
+class LedgerInvariantTest extends AbstractLedgerIntegrationTest {
 
     @Autowired LedgerPostingService posting;
     @Autowired AccountRepository accounts;
