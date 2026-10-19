@@ -3,13 +3,7 @@ package com.example.payment;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
-/**
- * Entry point for the payment orchestrator service.
- *
- * <p>{@code @SpringBootApplication} enables component scanning over this package
- * ({@code com.example.payment}) and below, plus Spring Boot auto-configuration
- * (DataSource, JPA, Flyway, the embedded web server, Actuator, etc.).
- */
+/** Payment orchestrator: REST entry point, saga, idempotency, and transactional outbox. */
 @SpringBootApplication
 public class PaymentServiceApplication {
 

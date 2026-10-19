@@ -3,12 +3,7 @@ package com.example.ledger;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
-/**
- * Entry point for the ledger service — the source of truth for account balances.
- *
- * <p>Consumes payment events, posts balanced debit/credit pairs to an immutable
- * journal in a single DB transaction, and enforces the zero-sum invariant.
- */
+/** Ledger service: source of truth for balances via a double-entry journal. */
 @SpringBootApplication
 public class LedgerServiceApplication {
 

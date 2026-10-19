@@ -2,7 +2,6 @@ spring:
   application:
     name: ledger-service
 
-  # Own database ("ledger"), separate from payment-service. Overridden inside Docker.
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/ledger}
     username: ${SPRING_DATASOURCE_USERNAME:payments}
@@ -21,7 +20,6 @@ spring:
     enabled: true
 
 server:
-  # Different port so both services can run on the host at once.
   port: ${SERVER_PORT:8081}
 
 management:
