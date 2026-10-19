@@ -1,6 +1,11 @@
 package com.example.payment.outbox;
 
 import com.example.payment.config.KafkaTopicsConfig;
+import com.example.payment.domain.PaymentRepository;
+import com.example.payment.messaging.PaymentCompleted;
+import com.example.payment.messaging.PaymentFailed;
+import com.example.payment.messaging.PaymentInitiated;
+import com.fasterxml.jackson.databind.JsonNode;
 import java.time.Instant;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
@@ -24,10 +29,13 @@ public class OutboxRelay {
     private static final int BATCH_SIZE = 100;
 
     private final OutboxRepository outboxRepository;
+    private final PaymentRepository paymentRepository;
     private final KafkaTemplate<String, String> kafkaTemplate;
 
-    public OutboxRelay(OutboxRepository outboxRepository, KafkaTemplate<String, String> kafkaTemplate) {
+    public OutboxRelay(OutboxRepository outboxRepository, PaymentRepository paymentRepository,
+                       KafkaTemplate<String, String> kafkaTemplate) {
         this.outboxRepository = outboxRepository;
+        this.paymentRepository = paymentRepository;
         this.kafkaTemplate = kafkaTemplate;
     }
 
@@ -38,10 +46,11 @@ public class OutboxRelay {
         List<OutboxMessage> batch = outboxRepository.findByPublishedAtIsNullOrderByIdAsc(Limit.of(BATCH_SIZE));
         for (OutboxMessage message : batch) {
             try {
+                Route route = routeFor(message);
                 // Block until the broker acks, so we only stamp rows that are truly on Kafka.
-                kafkaTemplate.send(KafkaTopicsConfig.PAYMENT_COMMANDS, partitionKey(message),
-                        message.getPayload().toString()).get();
+                kafkaTemplate.send(route.topic(), route.key(), message.getPayload().toString()).get();
                 message.markPublished(Instant.now());
+                advanceSaga(message);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 break;
@@ -53,8 +62,25 @@ public class OutboxRelay {
         }
     }
 
-    // payment.commands is keyed by fromAccountId for per-account ordering (spec §6).
-    private String partitionKey(OutboxMessage message) {
-        return message.getPayload().get("fromAccountId").asText();
+    // Once the initiating command is on the wire, the payment is awaiting the ledger (POSTING).
+    private void advanceSaga(OutboxMessage message) {
+        if (PaymentInitiated.TYPE.equals(message.getEventType())) {
+            paymentRepository.markPosting(message.getAggregateId());
+        }
+    }
+
+    private Route routeFor(OutboxMessage message) {
+        JsonNode payload = message.getPayload();
+        return switch (message.getEventType()) {
+            // Keyed by fromAccountId for per-account ordering (spec §6).
+            case PaymentInitiated.TYPE ->
+                    new Route(KafkaTopicsConfig.PAYMENT_COMMANDS, payload.get("fromAccountId").asText());
+            case PaymentCompleted.TYPE, PaymentFailed.TYPE ->
+                    new Route(KafkaTopicsConfig.PAYMENT_EVENTS, payload.get("paymentId").asText());
+            default -> throw new IllegalStateException("No route for event type " + message.getEventType());
+        };
+    }
+
+    private record Route(String topic, String key) {
     }
 }
